@@ -2,7 +2,6 @@ const SequelizeWorker = require('./Classes/SequelizeWorker');
 
 const sequelizeWorker = new SequelizeWorker();
 
-
 processInputs();
 
 function processInputs() {

@@ -3,6 +3,20 @@ const csv = require('csv-parser');
 const fs = require('fs');
 
 module.exports = class SequelizeWorker {
+
+    daysOfWeek = [];
+    higher = 0;
+    higherDiff = 0.00;
+    lower = 0;
+    lowerDiff = 0.00;
+    upTemp = []
+    downTemp = []
+    len;
+    data;
+    temp = 0;
+    streak = 0;
+    total = this.higher + this.lower;
+
     constructor() {
         this.sequelize = new Sequelize('mydb', 'mydb', 'mydb', {
             host: 'localhost',
@@ -49,7 +63,8 @@ module.exports = class SequelizeWorker {
         const file_descriptor = await fs.createReadStream(pathToFile)
             .pipe(csv())
             .on('data', (row) => {
-                this.insert(row.d, row.o, row.h, row.l, row.c, row.v);
+                const {v, d, c, o, l, h} = row;
+                this.insert(d, o, h, l, c, v);
             })
             .on('end', () => {
                 console.log('CSV file successfully processed');
@@ -60,9 +75,9 @@ module.exports = class SequelizeWorker {
                         } else {
                             console.log("\n> File Closed successfully");
                         }
-                    Sequelize.prototype.close = function () {
-                        this.connectionManager.close();
-                    };
+                        Sequelize.prototype.close = function () {
+                            this.connectionManager.close();
+                        };
                     }
                 );
             }).catch((error) => {
@@ -71,34 +86,33 @@ module.exports = class SequelizeWorker {
     }
 
     async sql() {
-        const data = await this.sequelize.query("SELECT date, open, close FROM tickers order by date", {type: QueryTypes.SELECT});
-        const len = data.length;
+        this.data = await this.sequelize.query("SELECT date, open, close FROM tickers order by date", {type: QueryTypes.SELECT});
+        this.len = this.data.length;
+        this.daysCalculation();
+        this.openCloseDiffs();
+        this.uptrendStreaks();
+        this.downtrendStreaks();
+        this.consoleOutput();
 
-        let higher = 0;
-        let higherDiff = 0.00;
+        Sequelize.prototype.close = function () {
+            this.connectionManager.close();
+        };
+    }
 
-        let lower = 0;
-        let lowerDiff = 0.00;
-
-        let upTemp = []
-        let downTemp = []
-
-        let temp = 0;
-        let streak = 0;
+    daysCalculation() {
+        const days = this.len / 5;
 
         let monday = 0;
         let tuesday = 0;
         let wednesday = 0;
         let thursday = 0;
         let friday = 0;
-        const days = len / 5;
 
-
-        for (let i = 0; i < len; i++) {
-            let diff = data[i]['open'] - data[i]['close'];
+        for (let i = 0; i < this.len; i++) {
+            let diff = this.data[i]['open'] - this.data[i]['close'];
 
             if (diff < 0) {
-                let day = new Date(data[i]['date']).getDay();
+                let day = new Date(this.data[i]['date']).getDay();
                 if (day === 0) {
                     monday++;
                 } else if (day === 1) {
@@ -110,80 +124,20 @@ module.exports = class SequelizeWorker {
                 } else if (day === 4) {
                     friday++;
                 }
-
             }
         }
 
-        let daysOfWeek = [];
-        daysOfWeek.push(monday / days);
-        daysOfWeek.push(tuesday / days);
-        daysOfWeek.push(wednesday / days);
-        daysOfWeek.push(thursday / days);
-        daysOfWeek.push(friday / days);
+        this.daysOfWeek.push(monday / days);
+        this.daysOfWeek.push(tuesday / days);
+        this.daysOfWeek.push(wednesday / days);
+        this.daysOfWeek.push(thursday / days);
+        this.daysOfWeek.push(friday / days);
 
-        daysOfWeek = daysOfWeek.map(function(each_element){
+        this.daysOfWeek = this.daysOfWeek.map(function (each_element) {
             return Number(each_element.toFixed(2));
         });
-
-        for (let i = 1; i < len; i++) {
-            let diff = data[i]['open'] - data[i]['close'];
-
-            if (data[i]['open'] < data[i]['close']) {
-                higherDiff -= diff;
-                higher++;
-            } else {
-                lowerDiff += diff;
-                lower++;
-            }
-        }
-
-        for (let i = 1; i < len; i++) {
-            temp = data[i - 1]['open'] - data[i - 1]['close'];
-
-            if ((data[i]['open'] - data[i]['close']) > 0 && temp > 0) {
-                streak++;
-            } else if (streak === 0) {
-
-            } else {
-                downTemp.push(streak);
-                streak = 0;
-            }
-        }
-
-        for (let i = 1; i < len; i++) {
-            temp = data[i - 1]['open'] - data[i - 1]['close'];
-
-            if ((data[i]['open'] - data[i]['close']) < 0 && temp < 0) {
-                streak++;
-            } else if (streak === 0) {
-
-            } else {
-                upTemp.push(streak);
-                streak = 0;
-            }
-        }
-
-        const total = higher + lower;
-
-        if (higher > lower) {
-            console.log("======================================================================================================\n")
-            console.log(`This is a bullish stock\n`)
-            console.log(`${Number((higher / total).toFixed(2))}% of the time the ticker closes higher on the day\n`)
-            console.log(`Distribution of up days in a row ${this.countingTread(upTemp)}\n`)
-            console.log(`Distribution of down days in a row ${this.countingTread(downTemp)}\n`)
-            console.log(`Stats for up days on each day of the week ${daysOfWeek}\n`)
-        } else {
-            console.log(`${Number((lower / total).toFixed(2))}% of the time the ticker closes higher on the day`)
-            console.log(`This is a bearish stock`)
-        }
-        console.log(`Accumulation up ${Number(higherDiff).toFixed(2)}\n` )
-        console.log(`Accumulation down ${Number(lowerDiff).toFixed(2)}\n` )
-
-
-        Sequelize.prototype.close = function () {
-            this.connectionManager.close();
-        };
     }
+
 
     countingTread(arr) {
         let count1 = 0;
@@ -222,6 +176,64 @@ module.exports = class SequelizeWorker {
         countArr.push(count6);
         countArr.push(misc);
         return countArr;
+    }
+
+    openCloseDiffs() {
+        for (let i = 1; i < this.len; i++) {
+            let diff = this.data[i]['open'] - this.data[i]['close'];
+
+            if (this.data[i]['open'] < this.data[i]['close']) {
+                this.higherDiff -= diff;
+                this.higher++;
+            } else {
+                this.lowerDiff += diff;
+                this.lower++;
+            }
+        }
+    }
+
+    uptrendStreaks() {
+        for (let i = 1; i < this.len; i++) {
+            this.temp = this.data[i - 1]['open'] - this.data[i - 1]['close'];
+
+            if ((this.data[i]['open'] - this.data[i]['close']) < 0 && this.temp < 0) {
+                this.streak++;
+            } else if (this.streak === 0) {
+            } else {
+                this.upTemp.push(this.streak);
+                this.streak = 0;
+            }
+        }
+    }
+
+    downtrendStreaks() {
+        for (let i = 1; i < this.len; i++) {
+            this.temp = this.data[i - 1]['open'] - this.data[i - 1]['close'];
+            if ((this.data[i]['open'] - this.data[i]['close']) > 0 && this.temp > 0) {
+                this.streak++;
+            } else if (this.streak === 0) {
+            } else {
+                this.downTemp.push(this.streak);
+                this.streak = 0;
+            }
+        }
+
+    }
+
+    consoleOutput() {
+        if (this.higher > this.lower) {
+            console.log("======================================================================================================\n")
+            console.log(`This is a bullish stock\n`)
+            console.log(`${Number((this.higher / this.total).toFixed(2))}% of the time the ticker closes higher on the day\n`)
+            console.log(`Distribution of up days in a row ${this.countingTread(this.upTemp)}\n`)
+            console.log(`Distribution of down days in a row ${this.countingTread(this.downTemp)}\n`)
+            console.log(`Stats for up days on each day of the week ${this.daysOfWeek}\n`)
+        } else {
+            console.log(`${Number((this.lower / this.total).toFixed(2))}% of the time the ticker closes higher on the day`)
+            console.log(`This is a bearish stock`)
+        }
+        console.log(`Accumulation up ${Number(this.higherDiff).toFixed(2)}\n`)
+        console.log(`Accumulation down ${Number(this.lowerDiff).toFixed(2)}\n`)
     }
 }
 
