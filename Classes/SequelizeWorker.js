@@ -1,4 +1,4 @@
-const {Sequelize, Op, DataTypes, Model, QueryTypes} = require('sequelize');
+const {Sequelize, DataTypes, QueryTypes} = require('sequelize');
 const csv = require('csv-parser');
 const fs = require('fs');
 
@@ -35,10 +35,7 @@ module.exports = class SequelizeWorker {
                 type: DataTypes.BIGINT,
                 allowNull: false
             }
-        }, {
-            // Other model options go here
         });
-
     }
 
     async insert(d, o, h, l, c, v) {
@@ -46,16 +43,30 @@ module.exports = class SequelizeWorker {
         await this.ticker.create({date: d, open: o, high: h, low: l, close: c, volume: v})
     }
 
-    async readCsv(pathToFile) {
+    async writeCsv(pathToFile) {
         // Pass in absolute path to a csv to read it in
         // also replace first row with d,o,h,l,c,v
-        await fs.createReadStream(pathToFile)
+        const file_descriptor = await fs.createReadStream(pathToFile)
             .pipe(csv())
             .on('data', (row) => {
                 this.insert(row.d, row.o, row.h, row.l, row.c, row.v);
             })
             .on('end', () => {
                 console.log('CSV file successfully processed');
+            }).then(() => {
+                fs.close(file_descriptor, (err) => {
+                        if (err) {
+                            console.error('Failed to close file', err);
+                        } else {
+                            console.log("\n> File Closed successfully");
+                        }
+                    Sequelize.prototype.close = function () {
+                        this.connectionManager.close();
+                    };
+                    }
+                );
+            }).catch((error) => {
+                console.log(error);
             });
     }
 
@@ -75,12 +86,12 @@ module.exports = class SequelizeWorker {
         let temp = 0;
         let streak = 0;
 
-        let monday =0;
+        let monday = 0;
         let tuesday = 0;
         let wednesday = 0;
         let thursday = 0;
         let friday = 0;
-        const days = len/5;
+        const days = len / 5;
 
 
         for (let i = 0; i < len; i++) {
@@ -88,10 +99,9 @@ module.exports = class SequelizeWorker {
 
             if (diff < 0) {
                 let day = new Date(data[i]['date']).getDay();
-                if(day === 0){
+                if (day === 0) {
                     monday++;
-                }
-                else if (day === 1) {
+                } else if (day === 1) {
                     tuesday++;
                 } else if (day === 2) {
                     wednesday++;
@@ -104,29 +114,28 @@ module.exports = class SequelizeWorker {
             }
         }
 
-        const daysOfWeek = [];
-        daysOfWeek.push(monday/days);
-        daysOfWeek.push(tuesday/days);
-        daysOfWeek.push(wednesday/days);
-        daysOfWeek.push(thursday/days);
-        daysOfWeek.push(friday/days);
+        let daysOfWeek = [];
+        daysOfWeek.push(monday / days);
+        daysOfWeek.push(tuesday / days);
+        daysOfWeek.push(wednesday / days);
+        daysOfWeek.push(thursday / days);
+        daysOfWeek.push(friday / days);
 
-
+        daysOfWeek = daysOfWeek.map(function(each_element){
+            return Number(each_element.toFixed(2));
+        });
 
         for (let i = 1; i < len; i++) {
             let diff = data[i]['open'] - data[i]['close'];
 
             if (data[i]['open'] < data[i]['close']) {
-                // console.log("closed higher on the day")
                 higherDiff -= diff;
                 higher++;
             } else {
                 lowerDiff += diff;
-                // console.log("closed lower on the day")
                 lower++;
             }
         }
-
 
         for (let i = 1; i < len; i++) {
             temp = data[i - 1]['open'] - data[i - 1]['close'];
@@ -141,7 +150,6 @@ module.exports = class SequelizeWorker {
             }
         }
 
-
         for (let i = 1; i < len; i++) {
             temp = data[i - 1]['open'] - data[i - 1]['close'];
 
@@ -153,26 +161,28 @@ module.exports = class SequelizeWorker {
                 upTemp.push(streak);
                 streak = 0;
             }
-
         }
-
 
         const total = higher + lower;
 
-
         if (higher > lower) {
-            console.log(`${Number((higher / total).toFixed(2))}% of the time the ticker closes higher on the day`)
-            console.log(`This is a bullish stock`)
-
-            console.log(this.countingTread(upTemp))
-            console.log(this.countingTread(downTemp))
-            console.log(daysOfWeek)
+            console.log("======================================================================================================\n")
+            console.log(`This is a bullish stock\n`)
+            console.log(`${Number((higher / total).toFixed(2))}% of the time the ticker closes higher on the day\n`)
+            console.log(`Distribution of up days in a row ${this.countingTread(upTemp)}\n`)
+            console.log(`Distribution of down days in a row ${this.countingTread(downTemp)}\n`)
+            console.log(`Stats for up days on each day of the week ${daysOfWeek}\n`)
         } else {
             console.log(`${Number((lower / total).toFixed(2))}% of the time the ticker closes higher on the day`)
             console.log(`This is a bearish stock`)
         }
+        console.log(`Accumulation up ${Number(higherDiff).toFixed(2)}\n` )
+        console.log(`Accumulation down ${Number(lowerDiff).toFixed(2)}\n` )
 
-        console.log(Number(higherDiff).toFixed(2), " ", Number(lowerDiff).toFixed(2))
+
+        Sequelize.prototype.close = function () {
+            this.connectionManager.close();
+        };
     }
 
     countingTread(arr) {
